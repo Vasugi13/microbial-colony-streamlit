@@ -57,8 +57,8 @@ class PatchExtract(layers.Layer):
 # ============================================================
 # MODEL URLs (REPLACE WITH YOUR DRIVE / GITHUB LINKS)
 # ============================================================
-CNN_MODEL_URL = ""       # optional
-CNN_VIT_MODEL_URL = ""   # optional
+CNN_MODEL_URL = "https://github.com/Vasugi13/microbial-colony-streamlit/blob/main/cnn_model.h5"       # optional
+CNN_VIT_MODEL_URL = "https://github.com/Vasugi13/microbial-colony-streamlit/blob/main/cnn_vit_model.h5"   # optional
 
 # ============================================================
 # DOWNLOAD MODELS IF URL PROVIDED
