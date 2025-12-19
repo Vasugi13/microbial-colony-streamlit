@@ -61,7 +61,7 @@ def download_model(url, filename):
         st.success(f"{filename} downloaded successfully!")
 
 # Replace these URLs with your actual model URLs
-CNN_MODEL_URL = ""
+CNN_MODEL_URL = "https://github.com/Vasugi13/microbial-colony-streamlit/blob/main/cnn_model.h5"
 CNN_VIT_MODEL_URL = ""
 
 download_model(CNN_MODEL_URL, "cnn_model.h5")
