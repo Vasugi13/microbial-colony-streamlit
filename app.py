@@ -1,4 +1,4 @@
-# app.py
+
 import streamlit as st
 import cv2
 import numpy as np
@@ -62,7 +62,7 @@ def download_model(url, filename):
 
 # Replace these URLs with your actual model URLs
 CNN_MODEL_URL = "https://github.com/Vasugi13/microbial-colony-streamlit/blob/main/cnn_model.h5"
-CNN_VIT_MODEL_URL = ""
+CNN_VIT_MODEL_URL = "https://github.com/Vasugi13/microbial-colony-streamlit/blob/main/cnn_vit_model.h5"
 
 download_model(CNN_MODEL_URL, "cnn_model.h5")
 download_model(CNN_VIT_MODEL_URL, "cnn_vit_model.h5")
