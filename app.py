@@ -55,14 +55,11 @@ class PatchExtract(layers.Layer):
         )
 
 # ============================================================
-# MODEL URLs (REPLACE WITH YOUR DRIVE / GITHUB LINKS)
+# MODEL URLs (use RAW github links if hosted)
 # ============================================================
-CNN_MODEL_URL = "https://github.com/Vasugi13/microbial-colony-streamlit/blob/main/cnn_model.h5"       # optional
-CNN_VIT_MODEL_URL = "https://github.com/Vasugi13/microbial-colony-streamlit/blob/main/cnn_vit_model.h5"   # optional
+CNN_MODEL_URL = ""
+CNN_VIT_MODEL_URL = ""
 
-# ============================================================
-# DOWNLOAD MODELS IF URL PROVIDED
-# ============================================================
 def download_model(url, filename):
     if url and not os.path.exists(filename):
         st.info(f"Downloading {filename}...")
@@ -73,7 +70,7 @@ download_model(CNN_MODEL_URL, "cnn_model.h5")
 download_model(CNN_VIT_MODEL_URL, "cnn_vit_model.h5")
 
 # ============================================================
-# LOAD DEEP MODELS SAFELY
+# LOAD DEEP MODELS
 # ============================================================
 @st.cache_resource
 def load_dl_models():
@@ -100,6 +97,7 @@ if uploaded_file is not None:
     image_np = np.array(image)
     image_np = cv2.resize(image_np, (512, 512))
 
+    # --- Preprocessing ---
     gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
     blurred = cv2.GaussianBlur(gray, (7, 7), 0)
     thresh = cv2.adaptiveThreshold(
@@ -116,7 +114,7 @@ if uploaded_file is not None:
     )
 
     output = image_np.copy()
-    colony_info = {"Healthy":0, "Unhealthy":0}
+    colony_info = {"Healthy": 0, "Unhealthy": 0}
     colony_data = []
 
     for cnt in contours:
@@ -135,6 +133,9 @@ if uploaded_file is not None:
 
         colony_data.append([area, perimeter, circularity, health_class])
 
+    # ============================================================
+    # DISPLAY RESULTS
+    # ============================================================
     st.subheader("🔍 Detected Colonies")
     st.image(output, use_column_width=True)
 
@@ -142,74 +143,75 @@ if uploaded_file is not None:
         colony_data,
         columns=["Area","Perimeter","Circularity","Health_Class"]
     )
+
     st.subheader("📊 Colony Feature Table")
     st.dataframe(df)
 
-    # ============================================================
-    # SVM & ANN
-    # ============================================================
-    X = df[["Area","Perimeter","Circularity"]]
-    y = df["Health_Class"]
-
-    le = LabelEncoder()
-    y_enc = le.fit_transform(y)
-
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
-    svm = SVC(kernel="linear", C=0.3)
-    svm.fit(X_scaled, y_enc)
-    svm_acc = svm.score(X_scaled, y_enc)
-
-    ann = MLPClassifier(
-        hidden_layer_sizes=(64,32),
-        max_iter=1500,
-        random_state=42
-    )
-    ann.fit(X_scaled, y_enc)
-    ann_acc = ann.score(X_scaled, y_enc)
+    st.write("📌 Total Colonies:", len(df))
+    st.write("🩺 Healthy:", colony_info["Healthy"])
+    st.write("⚠️ Unhealthy:", colony_info["Unhealthy"])
 
     # ============================================================
-    # CNN & CNN+ViT
+    # SAFE SVM & ANN TRAINING
+    # ============================================================
+    if len(df) < 2:
+        st.warning("⚠️ Not enough colonies for ML training")
+    else:
+        X = df[["Area","Perimeter","Circularity"]]
+        y = df["Health_Class"]
+
+        le = LabelEncoder()
+        y_enc = le.fit_transform(y)
+
+        if len(np.unique(y_enc)) < 2:
+            st.warning("⚠️ Only one class detected. SVM & ANN skipped.")
+        else:
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+
+            svm = SVC(kernel="linear", C=0.3)
+            svm.fit(X_scaled, y_enc)
+            svm_acc = svm.score(X_scaled, y_enc)
+
+            ann = MLPClassifier(
+                hidden_layer_sizes=(64,32),
+                max_iter=1500,
+                random_state=42
+            )
+            ann.fit(X_scaled, y_enc)
+            ann_acc = ann.score(X_scaled, y_enc)
+
+            st.subheader("📈 Classical ML Results")
+            st.write("🔹 SVM Accuracy:", f"{svm_acc:.2f}")
+            st.write("🔹 ANN Accuracy:", f"{ann_acc:.2f}")
+
+    # ============================================================
+    # CNN & CNN + ViT
     # ============================================================
     cnn_model, cnn_vit_model = load_dl_models()
 
-    cnn_result = "Model not loaded"
-    vit_result = "Model not loaded"
+    st.subheader("🧠 Deep Learning Results")
 
     if cnn_model:
         img_cnn = cv2.resize(image_np, (128,128)) / 255.0
         img_cnn = np.expand_dims(img_cnn, axis=0)
         cnn_pred = cnn_model.predict(img_cnn)
         cnn_result = "Healthy" if cnn_pred[0][0] > 0.5 else "Unhealthy"
+        st.write("🔸 CNN Prediction:", cnn_result)
+    else:
+        st.info("CNN model not loaded")
 
     if cnn_vit_model:
         img_vit = cv2.resize(image_np, (224,224)) / 255.0
         img_vit = np.expand_dims(img_vit, axis=0)
         vit_pred = cnn_vit_model.predict(img_vit)
+        vit_result = "Healthy" if np.argmax(vit_pred) == 0 else "Unhealthy"
+        st.write("🔸 CNN + ViT Prediction:", vit_result)
+    else:
+        st.info("CNN + ViT model not loaded")
 
-        # ✅ FIX: SOFTMAX → ARGMAX
-        class_id = np.argmax(vit_pred)
-        vit_result = "Healthy" if class_id == 0 else "Unhealthy"
+    st.success("✅ Execution completed successfully")
 
-    # ============================================================
-    # RESULTS
-    # ============================================================
-    st.subheader("📈 Model Results")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.write("🔹 **SVM Accuracy:**", f"{svm_acc:.2f}")
-        st.write("🔹 **ANN Accuracy:**", f"{ann_acc:.2f}")
-
-    with col2:
-        st.write("🧠 **CNN Prediction:**", cnn_result)
-        st.write("🤖 **CNN + ViT Prediction:**", vit_result)
-
-    st.success("✅ All Models Executed Successfully")
-    st.write("📌 **Total Colonies Detected:**", len(df))
-    st.write("🩺 **Healthy Colonies:**", colony_info["Healthy"])
-    st.write("⚠️ **Unhealthy Colonies:**", colony_info["Unhealthy"])
 
 
 
