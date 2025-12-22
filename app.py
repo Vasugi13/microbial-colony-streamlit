@@ -1,3 +1,4 @@
+
 # app.py
 import streamlit as st
 import cv2
@@ -55,21 +56,6 @@ class PatchExtract(layers.Layer):
         )
 
 # ============================================================
-# MODEL URLs (use RAW github links if hosted)
-# ============================================================
-CNN_MODEL_URL = ""
-CNN_VIT_MODEL_URL = ""
-
-def download_model(url, filename):
-    if url and not os.path.exists(filename):
-        st.info(f"Downloading {filename}...")
-        urllib.request.urlretrieve(url, filename)
-        st.success(f"{filename} downloaded!")
-
-download_model(CNN_MODEL_URL, "cnn_model.h5")
-download_model(CNN_VIT_MODEL_URL, "cnn_vit_model.h5")
-
-# ============================================================
 # LOAD DEEP MODELS
 # ============================================================
 @st.cache_resource
@@ -97,7 +83,7 @@ if uploaded_file is not None:
     image_np = np.array(image)
     image_np = cv2.resize(image_np, (512, 512))
 
-    # --- Preprocessing ---
+    # --- Preprocessing (noise reduction) ---
     gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
     blurred = cv2.GaussianBlur(gray, (7, 7), 0)
     thresh = cv2.adaptiveThreshold(
@@ -152,10 +138,16 @@ if uploaded_file is not None:
     st.write("⚠️ Unhealthy:", colony_info["Unhealthy"])
 
     # ============================================================
-    # SAFE SVM & ANN TRAINING
+    # NOISE-FIT SAFE SVM & ANN
     # ============================================================
-    if len(df) < 2:
-        st.warning("⚠️ Not enough colonies for ML training")
+    MIN_COLONIES = 15   # 🔴 prevents noise fitting
+
+    if len(df) < MIN_COLONIES:
+        st.warning(
+            "⚠️ Too few colonies detected. "
+            "Training ML models on a single image may cause NOISE FIT. "
+            "SVM & ANN skipped."
+        )
     else:
         X = df[["Area","Perimeter","Circularity"]]
         y = df["Health_Class"]
@@ -164,29 +156,30 @@ if uploaded_file is not None:
         y_enc = le.fit_transform(y)
 
         if len(np.unique(y_enc)) < 2:
-            st.warning("⚠️ Only one class detected. SVM & ANN skipped.")
+            st.warning("⚠️ Only one class detected. ML skipped to avoid noise fit.")
         else:
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X)
 
-            svm = SVC(kernel="linear", C=0.3)
+            # ✅ SIMPLE MODEL → LESS NOISE FIT
+            svm = SVC(kernel="linear", C=0.1)
             svm.fit(X_scaled, y_enc)
-            svm_acc = svm.score(X_scaled, y_enc)
 
             ann = MLPClassifier(
-                hidden_layer_sizes=(64,32),
-                max_iter=1500,
+                hidden_layer_sizes=(16,),
+                max_iter=800,
                 random_state=42
             )
             ann.fit(X_scaled, y_enc)
-            ann_acc = ann.score(X_scaled, y_enc)
 
-            st.subheader("📈 Classical ML Results")
-            st.write("🔹 SVM Accuracy:", f"{svm_acc:.2f}")
-            st.write("🔹 ANN Accuracy:", f"{ann_acc:.2f}")
+            st.subheader("📈 Classical ML Models")
+            st.info(
+                "ℹ️ Models trained with noise-fit prevention "
+                "(simple architecture + minimum samples)."
+            )
 
     # ============================================================
-    # CNN & CNN + ViT
+    # CNN & CNN + ViT (Pretrained → less noise fit)
     # ============================================================
     cnn_model, cnn_vit_model = load_dl_models()
 
@@ -210,7 +203,7 @@ if uploaded_file is not None:
     else:
         st.info("CNN + ViT model not loaded")
 
-    st.success("✅ Execution completed successfully")
+    st.success("✅ Execution completed with noise-fit protection")
 
 
 
