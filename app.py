@@ -1,4 +1,3 @@
-
 # app.py
 import streamlit as st
 import cv2
@@ -7,7 +6,6 @@ import pandas as pd
 from PIL import Image
 import random
 import os
-import urllib.request
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
@@ -56,7 +54,7 @@ class PatchExtract(layers.Layer):
         )
 
 # ============================================================
-# LOAD DEEP MODELS
+# LOAD DL MODELS (OPTIONAL)
 # ============================================================
 @st.cache_resource
 def load_dl_models():
@@ -79,11 +77,12 @@ def load_dl_models():
 # ============================================================
 if uploaded_file is not None:
 
+    # ---------- Load Image ----------
     image = Image.open(uploaded_file).convert("RGB")
     image_np = np.array(image)
     image_np = cv2.resize(image_np, (512, 512))
 
-    # --- Preprocessing (noise reduction) ---
+    # ---------- Preprocessing ----------
     gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
     blurred = cv2.GaussianBlur(gray, (7, 7), 0)
     thresh = cv2.adaptiveThreshold(
@@ -99,9 +98,10 @@ if uploaded_file is not None:
         morphed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
 
+    # ---------- Colony Detection ----------
     output = image_np.copy()
-    colony_info = {"Healthy": 0, "Unhealthy": 0}
     colony_data = []
+    colony_info = {"Healthy": 0, "Unhealthy": 0}
 
     for cnt in contours:
         area = cv2.contourArea(cnt)
@@ -119,9 +119,7 @@ if uploaded_file is not None:
 
         colony_data.append([area, perimeter, circularity, health_class])
 
-    # ============================================================
-    # DISPLAY RESULTS
-    # ============================================================
+    # ---------- Display ----------
     st.subheader("🔍 Detected Colonies")
     st.image(output, use_column_width=True)
 
@@ -138,16 +136,12 @@ if uploaded_file is not None:
     st.write("⚠️ Unhealthy:", colony_info["Unhealthy"])
 
     # ============================================================
-    # NOISE-FIT SAFE SVM & ANN
+    # SVM & ANN VALUES (SAFE + NOISE FIT AWARE)
     # ============================================================
-    MIN_COLONIES = 15   # 🔴 prevents noise fitting
+    st.subheader("📈 SVM & ANN Values")
 
-    if len(df) < MIN_COLONIES:
-        st.warning(
-            "⚠️ Too few colonies detected. "
-            "Training ML models on a single image may cause NOISE FIT. "
-            "SVM & ANN skipped."
-        )
+    if len(df) < 2:
+        st.warning("⚠️ Not enough samples to compute SVM & ANN values")
     else:
         X = df[["Area","Perimeter","Circularity"]]
         y = df["Health_Class"]
@@ -156,30 +150,38 @@ if uploaded_file is not None:
         y_enc = le.fit_transform(y)
 
         if len(np.unique(y_enc)) < 2:
-            st.warning("⚠️ Only one class detected. ML skipped to avoid noise fit.")
+            st.warning("⚠️ Only one class detected – SVM & ANN values not reliable")
         else:
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X)
 
-            # ✅ SIMPLE MODEL → LESS NOISE FIT
-            svm = SVC(kernel="linear", C=0.1)
+            # ----- SVM -----
+            svm = SVC(kernel="linear", C=0.3)
             svm.fit(X_scaled, y_enc)
+            svm_acc = svm.score(X_scaled, y_enc)
 
+            # ----- ANN -----
             ann = MLPClassifier(
-                hidden_layer_sizes=(16,),
-                max_iter=800,
+                hidden_layer_sizes=(32,),
+                max_iter=1000,
                 random_state=42
             )
             ann.fit(X_scaled, y_enc)
+            ann_acc = ann.score(X_scaled, y_enc)
 
-            st.subheader("📈 Classical ML Models")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("SVM Accuracy", f"{svm_acc:.2f}")
+            with col2:
+                st.metric("ANN Accuracy", f"{ann_acc:.2f}")
+
             st.info(
-                "ℹ️ Models trained with noise-fit prevention "
-                "(simple architecture + minimum samples)."
+                "ℹ️ These are training accuracies computed on colony features "
+                "from the uploaded image. High values may indicate noise fitting."
             )
 
     # ============================================================
-    # CNN & CNN + ViT (Pretrained → less noise fit)
+    # CNN & CNN + ViT (OPTIONAL)
     # ============================================================
     cnn_model, cnn_vit_model = load_dl_models()
 
@@ -203,8 +205,4 @@ if uploaded_file is not None:
     else:
         st.info("CNN + ViT model not loaded")
 
-    st.success("✅ Execution completed with noise-fit protection")
-
-
-
-
+    st.success("✅ Execution completed successfully")
